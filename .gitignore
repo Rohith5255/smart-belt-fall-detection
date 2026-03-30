@@ -1,0 +1,8 @@
+.venv/
+data/
+saved_models/*.pkl
+saved_models/*.pth
+__pycache__/
+*.pyc
+Thumbs.db
+debug_svm.py
