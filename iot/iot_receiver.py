@@ -36,15 +36,55 @@ class ESP32Receiver:
         self._thread  = None
         self._error   = None
 
-    def connect(self):
+    @staticmethod
+    def _find_esp32_port():
+        """
+        Auto-detects the ESP32 COM port by looking for common USB-serial
+        bridge chips: CH340 (blue PCBs), CP2102/CP2104 (red/black PCBs).
+        Returns the port string, or None if nothing found.
+        """
         try:
-            self._ser = serial.Serial(port=self.port, baudrate=self.baudrate,
+            from serial.tools import list_ports
+            candidates = []
+            for p in list_ports.comports():
+                desc = (p.description or "").lower()
+                hwid = (p.hwid or "").lower()
+                if any(kw in desc or kw in hwid for kw in
+                       ("ch340", "cp210", "ftdi", "usb serial", "esp32",
+                        "silicon labs", "wch")):
+                    candidates.append(p.device)
+            if candidates:
+                print(f"[ESP32] Auto-detected serial ports: {candidates}")
+                return candidates[0]
+        except Exception:
+            pass
+        return None
+
+    def connect(self):
+        target_port = self.port
+        try:
+            self._ser = serial.Serial(port=target_port, baudrate=self.baudrate,
                                        timeout=self.timeout)
-            time.sleep(2.0)
-            self._ser.reset_input_buffer()
-            print(f"[ESP32] Connected on {self.port} @ {self.baudrate} baud")
-        except serial.SerialException as e:
-            raise ConnectionError(f"Cannot open {self.port}: {e}")
+        except serial.SerialException:
+            # Primary port failed — try auto-detect
+            print(f"[ESP32] {target_port} not found — scanning for ESP32 ...")
+            detected = self._find_esp32_port()
+            if detected is None:
+                raise ConnectionError(
+                    f"Cannot open {target_port} and no ESP32 auto-detected.\n"
+                    "  1. Plug in the belt USB cable.\n"
+                    "  2. Check Device Manager for the COM port number.\n"
+                    "  3. Update SERIAL_PORT in config.py if it changed.\n"
+                    "  Or run with --simulate to test without hardware.")
+            try:
+                self._ser = serial.Serial(port=detected, baudrate=self.baudrate,
+                                           timeout=self.timeout)
+                self.port = detected   # update so logs show the real port
+            except serial.SerialException as e2:
+                raise ConnectionError(f"Auto-detected {detected} but failed: {e2}")
+        time.sleep(2.0)
+        self._ser.reset_input_buffer()
+        print(f"[ESP32] Connected on {self.port} @ {self.baudrate} baud")
 
     def disconnect(self):
         self._running = False

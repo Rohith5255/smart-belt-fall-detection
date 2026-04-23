@@ -17,7 +17,9 @@ from config import SVM_MODEL_PATH
 def build_svm_pipeline():
     return Pipeline([
         ("scaler", StandardScaler()),
-        ("svm", SVC(kernel="rbf", C=10.0, gamma="scale",
+        # C=0.5 (was 10.0): lower confidence → wider probability output range
+        # so pre-fall spikes stand out more from normal-movement baseline
+        ("svm", SVC(kernel="rbf", C=0.5, gamma="scale",
                     probability=True, class_weight="balanced", random_state=42)),
     ])
 

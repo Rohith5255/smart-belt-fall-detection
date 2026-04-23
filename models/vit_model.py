@@ -39,17 +39,79 @@ def save_vit(model, path=VIT_MODEL_PATH):
     print(f"[ViT] Saved → {path}")
 
 
+_LOCAL_FALLBACK = r"C:\Temp\vit_model_local.pth"
+
+
+def _is_cloud_only(path):
+    """Returns True if the file is an OneDrive cloud-only placeholder."""
+    try:
+        import ctypes
+        FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x400000
+        attrs = ctypes.windll.kernel32.GetFileAttributesW(path)
+        return bool(attrs & FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS)
+    except Exception:
+        return False
+
+
 def load_vit(path=VIT_MODEL_PATH, device=None):
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if not os.path.exists(path):
+
+    # Prefer a fully-local copy if the OneDrive version is still cloud-only
+    load_path = path
+    if _is_cloud_only(path):
+        if os.path.exists(_LOCAL_FALLBACK) and not _is_cloud_only(_LOCAL_FALLBACK):
+            print(f"[ViT] OneDrive file still syncing — using local copy: {_LOCAL_FALLBACK}")
+            load_path = _LOCAL_FALLBACK
+        else:
+            raise OSError(
+                f"vit_model.pth is still a OneDrive cloud placeholder and no local "
+                f"copy exists at {_LOCAL_FALLBACK}.\n"
+                "Right-click the file in Explorer → 'Always keep on this device', "
+                "or wait for OneDrive to finish syncing.")
+
+    if not os.path.exists(load_path):
         raise FileNotFoundError(
-            f"ViT model not found at {path}.\n"
+            f"ViT model not found at {load_path}.\n"
             "Run: python training/train_vit.py")
+
+    # Quick read-test: detect OneDrive cloud files that pass the attribute
+    # check but hang indefinitely when actually read (mid-download timeout).
+    try:
+        import signal as _signal
+
+        def _timeout_handler(signum, frame):
+            raise OSError("Read timed out — file is still downloading from OneDrive.")
+
+        # Windows doesn't support SIGALRM, so use a threading-based timeout.
+        import threading as _threading
+        _read_ok = []
+        _read_err = []
+
+        def _probe():
+            try:
+                with open(load_path, "rb") as _f:
+                    magic = _f.read(4)
+                if magic[:2] != b"PK":
+                    _read_err.append(f"Unexpected magic bytes {magic.hex()} — file may be corrupt.")
+                else:
+                    _read_ok.append(True)
+            except OSError as exc:
+                _read_err.append(str(exc))
+
+        _t = _threading.Thread(target=_probe, daemon=True)
+        _t.start()
+        _t.join(timeout=5.0)          # give OneDrive 5 s to return the first 4 bytes
+        if not _read_ok:
+            err = _read_err[0] if _read_err else "Read timed out — OneDrive has not synced this file yet."
+            raise OSError(err)
+    except OSError:
+        raise
+
     model = FallViT(pretrained=False)
-    model.load_state_dict(torch.load(path, map_location=device))
+    model.load_state_dict(torch.load(load_path, map_location=device))
     model.to(device).eval()
-    print(f"[ViT] Loaded ← {path}  (device={device})")
+    print(f"[ViT] Loaded from {load_path}  (device={device})")
     return model
 
 
