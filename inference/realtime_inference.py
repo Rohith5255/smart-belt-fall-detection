@@ -22,6 +22,7 @@ from config import (CAMERA_INDEX,
                     RISK_BUFFER_SIZE, RISK_SLOPE_THRESHOLD,
                     RISK_SCORE_THRESHOLD, PREDICTION_HORIZON_SEC,
                     ALERT_COOLDOWN_SECONDS)
+from utils.camera_utils import auto_detect_camera
 from models.svm_model import load_svm, svm_predict_proba
 from fusion.fusion_model import fuse, load_fusion_model
 from preprocessing.sensor_preprocessing import extract_realtime_features
@@ -33,16 +34,17 @@ from alerts.alert_system import AlertSystem
 # ── Shared state ──────────────────────────────────────────────────────────────
 class SharedState:
     def __init__(self):
-        self.lock         = threading.Lock()
-        self.svm_proba    = 0.0
-        self.pose_score   = 0.0      # replaces vit_proba
-        self.fused_proba  = 0.0
-        self.label        = 0
-        self.fall_predicted = False  # Phase 4: rising risk flag
-        self.risk_slope   = 0.0
-        self.latest_frame = None
-        self.pose_features= {}
-        self.running      = True
+        self.lock           = threading.Lock()
+        self.svm_proba      = 0.0
+        self.pose_score     = 0.0      # replaces vit_proba
+        self.fused_proba    = 0.0
+        self.label          = 0
+        self.fall_predicted = False    # Phase 4: rising risk flag
+        self.risk_slope     = 0.0
+        self.latest_frame   = None
+        self.pose_features  = {}
+        self.running        = True
+        self.camera_name    = "—"      # set by vision_thread after detection
 
 
 # ── Phase 4: temporal risk trend ─────────────────────────────────────────────
@@ -105,14 +107,18 @@ def vision_thread(pose_estimator, state, simulate=False):
         return
 
     import cv2
-    cap = cv2.VideoCapture(CAMERA_INDEX)
+    # Auto-detect: prefer external/secondary webcam, fall back to laptop cam (0)
+    cam_idx, cam_name = auto_detect_camera(fallback_index=CAMERA_INDEX)
+    cap = cv2.VideoCapture(cam_idx)
     if not cap.isOpened():
-        print(f"[VisionThread] Cannot open camera {CAMERA_INDEX}.")
+        print(f"[VisionThread] Cannot open camera [{cam_idx}] {cam_name}.")
         while state.running:
             time.sleep(0.1)
         return
 
-    print(f"[VisionThread] Camera {CAMERA_INDEX} opened — MediaPipe Pose active.")
+    print(f"[VisionThread] Using camera [{cam_idx}] {cam_name} — MediaPipe Pose active.")
+    with state.lock:
+        state.camera_name = f"[{cam_idx}] {cam_name}"
     while state.running:
         ret, frame = cap.read()
         if not ret:
@@ -237,8 +243,9 @@ def display_thread_gui(state, pose_estimator):
 
     while state.running:
         with state.lock:
-            frame   = state.latest_frame
-            svm_p   = state.svm_proba
+            frame    = state.latest_frame
+            svm_p    = state.svm_proba
+            cam_name = state.camera_name
             pos_p   = state.pose_score
             fused   = state.fused_proba
             label   = state.label
@@ -260,6 +267,12 @@ def display_thread_gui(state, pose_estimator):
         overlay = display.copy()
         cv2.rectangle(overlay, (0, 0), (w, 175), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.55, display, 0.45, 0, display)
+
+        # Camera label (top-right corner)
+        cam_label = f"Cam: {cam_name}"
+        (lw, lh), _ = cv2.getTextSize(cam_label, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
+        cv2.putText(display, cam_label, (w - lw - 8, 18),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, (180, 180, 180), 1)
 
         # Scores
         cv2.putText(display, f"SVM:   {svm_p:.3f}", (10, 30),
