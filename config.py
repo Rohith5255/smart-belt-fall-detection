@@ -71,11 +71,11 @@ ALERT_COOLDOWN_SECONDS = 10
 PRE_FALL_RATIO        = 0.60   # first 60% of fall sequence = pre-fall
 
 # Rolling risk-trend buffer (number of fusion scores kept for slope calc)
-RISK_BUFFER_SIZE      = 15     # ~3 seconds at 0.2s per cycle
+RISK_BUFFER_SIZE      = 8      # ~1.6s at 0.2s per cycle (was 15/3s — too slow to predict)
 
 # Thresholds to fire "FALL PREDICTED" warning
-RISK_SLOPE_THRESHOLD  = 0.002  # minimum rising slope per cycle
-RISK_SCORE_THRESHOLD  = 0.10   # minimum average fused score to warn
+RISK_SLOPE_THRESHOLD  = 0.0015 # was 0.002 — catches gentler pre-fall slopes
+RISK_SCORE_THRESHOLD  = 0.07   # was 0.10 — fires at lower baseline fused score
 
 # Prediction horizon printed in alerts
 PREDICTION_HORIZON_SEC = 2.0

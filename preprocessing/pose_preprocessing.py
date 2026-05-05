@@ -165,20 +165,20 @@ class PoseEstimator:
 
         # ── Compose risk score ────────────────────────────────────────
         score = 0.0
-        # Trunk lean contribution — abs() catches BOTH forward and backward
+        # Trunk lean — lowered thresholds to catch 18-30° pre-fall lean
         lean_abs = abs(trunk_lean)
-        if lean_abs > 35:
+        if lean_abs > 30:
             score += 0.50
-        elif lean_abs > 20:
+        elif lean_abs > 18:
             score += 0.30
-        elif lean_abs > 12:
-            score += 0.10
+        elif lean_abs > 10:
+            score += 0.12
         # Shoulder roll
         score += min(shoulder_roll * 0.02, 0.20)
         # Knee asymmetry
         score += min(knee_asymmetry * 0.03, 0.20)
-        # Head dropping
-        score += min(head_drop_rate * 5.0, 0.20)
+        # Head dropping — boosted multiplier to catch subtle drops sooner
+        score += min(head_drop_rate * 7.0, 0.25)
 
         pose_score = float(min(score, 1.0))
 

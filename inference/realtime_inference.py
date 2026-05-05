@@ -159,19 +159,35 @@ def _vision_simulate_pose(state):
         else:
             score = float(np.clip(np.random.normal(0.80, 0.05), 0, 1))
 
-        # Generate a placeholder frame
+        # Synthetic trunk lean that matches the pose timeline
+        if elapsed < 5.0:
+            lean = 0.0
+        elif elapsed < 7.0:
+            lean = ((elapsed - 5.0) / 2.0) * 35.0   # 0 → 35° over 2s
+        else:
+            lean = 45.0                               # fully tipped over
+
         frame = np.random.randint(
             150 if elapsed >= 7 else 50, 255 if elapsed >= 7 else 120,
             (480, 640, 3), dtype=np.uint8)
 
         with state.lock:
-            state.latest_frame = frame.copy()
-            state.pose_score   = score
+            state.latest_frame  = frame.copy()
+            state.pose_score    = score
+            state.pose_features = {
+                "pose_detected" : 1,
+                "trunk_lean_deg": round(lean, 2),
+                "shoulder_roll" : 0.0,
+                "knee_asymmetry": 0.0,
+                "head_drop_rate": 0.0,
+                "pose_score"    : score,
+            }
         time.sleep(0.1)
 
 
 def fusion_thread(state, alert_system, risk_trend, mlp_fusion=None):
     print("[FusionThread] Started.")
+    _high_pose_streak = 0   # consecutive cycles with pose_score >= 0.30
     while state.running:
         with state.lock:
             svm_p = state.svm_proba
@@ -182,8 +198,18 @@ def fusion_thread(state, alert_system, risk_trend, mlp_fusion=None):
 
         # Phase 4: update risk trend
         risk_trend.update(fused_proba)
-        predicted = risk_trend.predict_fall()
-        slope     = risk_trend.slope
+        trend_predicted = risk_trend.predict_fall()
+        slope           = risk_trend.slope
+
+        # Early-warning: 3 consecutive cycles (0.6s) of elevated pose score
+        # catches balance loss before the full trend builds up
+        if pos_p >= 0.30:
+            _high_pose_streak += 1
+        else:
+            _high_pose_streak = 0
+        pose_early_warn = (_high_pose_streak >= 3)
+
+        predicted = trend_predicted or pose_early_warn
 
         with state.lock:
             state.fused_proba    = fused_proba
