@@ -128,10 +128,11 @@ def vision_thread(pose_estimator, state, simulate=False):
 
     cam_idx = CAMERA_INDEX
 
-    # Default backend first; fall back to CAP_DSHOW if needed (DroidCam works either way)
-    cap = cv2.VideoCapture(cam_idx)
+    # Use MSMF (Windows Media Foundation) — confirmed working with DroidCam virtual cam.
+    # CAP_DSHOW raises a C++ exception on this system and cannot open DroidCam.
+    cap = cv2.VideoCapture(cam_idx, cv2.CAP_MSMF)
     if not cap.isOpened():
-        cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
+        cap = cv2.VideoCapture(cam_idx)   # fallback to default backend
     if not cap.isOpened():
         print(f"[VisionThread] Cannot open camera [{cam_idx}]. "
               f"Run find_cameras.py and update CAMERA_INDEX in config.py.")
@@ -139,30 +140,41 @@ def vision_thread(pose_estimator, state, simulate=False):
             time.sleep(0.1)
         return
 
-    # Force resolution and minimise internal buffer lag
+    # Force resolution and minimise buffer lag
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     cap.set(cv2.CAP_PROP_BUFFERSIZE,   1)   # keep only the latest frame
 
-    print(f"[VisionThread] Camera [{cam_idx}] opened — MediaPipe Pose active.")
-    print(f"[VisionThread] Warming up camera for 2s (DroidCam buffer fill) ...")
-    time.sleep(2.0)   # let DroidCam virtual camera buffer fill before reading
-
+    print(f"[VisionThread] Camera [{cam_idx}] opened (MSMF) — MediaPipe Pose active.")
     with state.lock:
         state.camera_name = f"[{cam_idx}]"
+
+    _no_signal_warned = False
 
     while state.running:
         t_frame = time.time()
         ret, frame = cap.read()
-        if not ret:
+        if not ret or frame is None:
             time.sleep(0.05)
             continue
 
-        # Skip green/blank init frames from DroidCam:
-        # green frames have high green channel AND green >> red by >50 counts
-        if frame.mean() > 200 and (frame[:, :, 1].mean() - frame[:, :, 0].mean()) > 50:
-            time.sleep(0.05)
+        # Detect DroidCam "no phone signal" frame: R≈0, G≈135, B≈0.
+        # Mean is only ~45 (not >180) so never use a high-mean gate.
+        # Don't rely on std — MSMF H.264 decompression adds ~5-20 noise counts
+        # even on solid-color frames, pushing std above any tight threshold.
+        # Instead use channel ratios: real frames always have R>0 or B>0.
+        r = float(frame[:, :, 0].mean())
+        g = float(frame[:, :, 1].mean())
+        b = float(frame[:, :, 2].mean())
+        if r < 10 and b < 10 and g > 80:
+            if not _no_signal_warned:
+                print("[VisionThread] DroidCam no-signal frame detected "
+                      "(R≈0 G≈135 B≈0). Waiting for phone to connect ...")
+                _no_signal_warned = True
+            time.sleep(0.1)
             continue
+
+        _no_signal_warned = False   # real frame arrived — reset flag
 
         features = pose_estimator.process_frame(frame)
         t_pose_done = time.time()
