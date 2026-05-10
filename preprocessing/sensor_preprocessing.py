@@ -22,11 +22,19 @@ New prediction features (Phase 2):
 import os
 import re
 import glob
+import warnings
 import numpy as np
 import pandas as pd
 from scipy.stats import kurtosis, skew
 from scipy.signal import welch, butter, filtfilt
 from tqdm import tqdm
+
+# Suppress precision-loss warnings from scipy kurtosis/skew on near-constant
+# data (e.g. belt-offline mode returns flat neutral pressure/acc windows).
+warnings.filterwarnings("ignore", category=RuntimeWarning,
+                        message=".*catastrophic cancellation.*")
+warnings.filterwarnings("ignore", category=RuntimeWarning,
+                        message=".*Precision loss.*")
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
