@@ -128,10 +128,10 @@ def vision_thread(pose_estimator, state, simulate=False):
 
     cam_idx = CAMERA_INDEX
 
-    # Try CAP_DSHOW first (faster init, more reliable on Windows for USB cams)
-    cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
+    # Default backend first; fall back to CAP_DSHOW if needed (DroidCam works either way)
+    cap = cv2.VideoCapture(cam_idx)
     if not cap.isOpened():
-        cap = cv2.VideoCapture(cam_idx)   # fallback to default backend
+        cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
     if not cap.isOpened():
         print(f"[VisionThread] Cannot open camera [{cam_idx}]. "
               f"Run find_cameras.py and update CAMERA_INDEX in config.py.")
@@ -139,7 +139,15 @@ def vision_thread(pose_estimator, state, simulate=False):
             time.sleep(0.1)
         return
 
-    print(f"[VisionThread] Camera [{cam_idx}] opened (CAP_DSHOW) — MediaPipe Pose active.")
+    # Force resolution and minimise internal buffer lag
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE,   1)   # keep only the latest frame
+
+    print(f"[VisionThread] Camera [{cam_idx}] opened — MediaPipe Pose active.")
+    print(f"[VisionThread] Warming up camera for 2s (DroidCam buffer fill) ...")
+    time.sleep(2.0)   # let DroidCam virtual camera buffer fill before reading
+
     with state.lock:
         state.camera_name = f"[{cam_idx}]"
 
@@ -147,6 +155,12 @@ def vision_thread(pose_estimator, state, simulate=False):
         t_frame = time.time()
         ret, frame = cap.read()
         if not ret:
+            time.sleep(0.05)
+            continue
+
+        # Skip green/blank init frames from DroidCam:
+        # green frames have high green channel AND green >> red by >50 counts
+        if frame.mean() > 200 and (frame[:, :, 1].mean() - frame[:, :, 0].mean()) > 50:
             time.sleep(0.05)
             continue
 

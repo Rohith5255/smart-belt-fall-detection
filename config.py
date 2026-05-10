@@ -61,7 +61,7 @@ ESP32_DATA_FORMAT = ["acc_x", "acc_y", "acc_z",
                       "pressure_left", "pressure_right"]
 # Set to whichever index is your external webcam.
 # Run:  python find_cameras.py   to see which index shows your external webcam.
-CAMERA_INDEX    = 0
+CAMERA_INDEX    = 1
 
 # ── Alert Config ───────────────────────────────────────────────────────
 ALERT_COOLDOWN_SECONDS = 10
