@@ -20,8 +20,8 @@ from datetime import datetime
 
 from config import (CAMERA_INDEX,
                     RISK_BUFFER_SIZE, RISK_SLOPE_THRESHOLD,
-                    RISK_SCORE_THRESHOLD, PREDICTION_HORIZON_SEC,
-                    ALERT_COOLDOWN_SECONDS)
+                    RISK_SCORE_THRESHOLD, FALL_PREDICT_THRESHOLD,
+                    PREDICTION_HORIZON_SEC, ALERT_COOLDOWN_SECONDS)
 from models.svm_model import load_svm, svm_predict_proba
 from fusion.fusion_model import fuse, load_fusion_model
 from preprocessing.sensor_preprocessing import extract_realtime_features
@@ -72,8 +72,12 @@ class RiskTrend:
         return float(np.mean(list(self._buf))) if self._buf else 0.0
 
     def predict_fall(self):
-        return (self.slope > RISK_SLOPE_THRESHOLD and
-                self.mean   > RISK_SCORE_THRESHOLD)
+        # Require meaningful fused score AND genuine rising slope.
+        # FALL_PREDICT_THRESHOLD (0.20) stops noise-driven false positives in
+        # belt-offline mode where SVM idles ~0.015 and pose flickers push
+        # fused briefly to ~0.10 — well below a real pre-fall signal.
+        return (self.mean  >= FALL_PREDICT_THRESHOLD and
+                self.slope  > RISK_SLOPE_THRESHOLD)
 
 
 # ── Worker threads ────────────────────────────────────────────────────────────
@@ -215,12 +219,15 @@ def fusion_thread(state, alert_system, risk_trend, mlp_fusion=None):
         slope           = risk_trend.slope
 
         # Early-warning: 3 consecutive cycles (0.6s) of elevated pose score
-        # catches balance loss before the full trend builds up
+        # catches balance loss before the full trend builds up.
+        # Also require fused_proba >= FALL_PREDICT_THRESHOLD so a high pose
+        # reading alone (with near-zero SVM in belt-offline mode) doesn't fire.
         if pos_p >= 0.30:
             _high_pose_streak += 1
         else:
             _high_pose_streak = 0
-        pose_early_warn = (_high_pose_streak >= 3)
+        pose_early_warn = (_high_pose_streak >= 3 and
+                           fused_proba >= FALL_PREDICT_THRESHOLD)
 
         predicted = trend_predicted or pose_early_warn
 
