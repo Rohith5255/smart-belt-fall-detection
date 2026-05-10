@@ -45,6 +45,7 @@ class SharedState:
         self.pose_features  = {}
         self.running        = True
         self.camera_name    = "—"      # set by vision_thread after detection
+        self.belt_offline   = False    # True when ESP32 not connected
 
 
 # ── Phase 4: temporal risk trend ─────────────────────────────────────────────
@@ -79,6 +80,13 @@ class RiskTrend:
 # ── Worker threads ────────────────────────────────────────────────────────────
 def sensor_thread(receiver, svm_pipeline, state):
     print("[SensorThread] Started.")
+    # Reflect belt connection status in shared state
+    offline = getattr(receiver, "is_offline", False)
+    with state.lock:
+        state.belt_offline = offline
+    if offline:
+        print("[SensorThread] Belt offline — SVM will output 0.0 (camera-only mode).")
+
     while state.running:
         if not receiver.is_ready():
             time.sleep(0.05)
@@ -269,15 +277,16 @@ def display_thread_gui(state, pose_estimator):
 
     while state.running:
         with state.lock:
-            frame    = state.latest_frame
-            svm_p    = state.svm_proba
-            cam_name = state.camera_name
-            pos_p   = state.pose_score
-            fused   = state.fused_proba
-            label   = state.label
-            pred    = state.fall_predicted
-            slope   = state.risk_slope
-            pf      = dict(state.pose_features)
+            frame        = state.latest_frame
+            svm_p        = state.svm_proba
+            cam_name     = state.camera_name
+            pos_p        = state.pose_score
+            fused        = state.fused_proba
+            label        = state.label
+            pred         = state.fall_predicted
+            slope        = state.risk_slope
+            pf           = dict(state.pose_features)
+            belt_offline = state.belt_offline
 
         # Draw skeleton on a copy of the frame
         if frame is not None:
@@ -301,8 +310,10 @@ def display_thread_gui(state, pose_estimator):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.42, (180, 180, 180), 1)
 
         # Scores
-        cv2.putText(display, f"SVM:   {svm_p:.3f}", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
+        cv2.putText(display,
+                    f"SVM:   {svm_p:.3f}" + ("  [BELT OFFLINE]" if belt_offline else ""),
+                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
+                    (100, 100, 255) if belt_offline else (255, 255, 255), 2)
         cv2.putText(display, f"Pose:  {pos_p:.3f}", (10, 62),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
         cv2.putText(display, f"Fused: {fused:.3f}  slope: {slope:+.4f}",

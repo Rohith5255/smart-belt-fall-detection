@@ -35,6 +35,7 @@ class ESP32Receiver:
         self._running = False
         self._thread  = None
         self._error   = None
+        self._offline = False   # True when belt is not connected
 
     @staticmethod
     def _find_esp32_port():
@@ -70,18 +71,20 @@ class ESP32Receiver:
             print(f"[ESP32] {target_port} not found — scanning for ESP32 ...")
             detected = self._find_esp32_port()
             if detected is None:
-                raise ConnectionError(
-                    f"Cannot open {target_port} and no ESP32 auto-detected.\n"
-                    "  1. Plug in the belt USB cable.\n"
-                    "  2. Check Device Manager for the COM port number.\n"
-                    "  3. Update SERIAL_PORT in config.py if it changed.\n"
-                    "  Or run with --simulate to test without hardware.")
+                self._offline = True
+                print("[ESP32] ⚠  Belt not found — running in CAMERA-ONLY mode.")
+                print("           SVM score will be 0. Pose detection still active.")
+                print("           Plug in the belt and restart to enable full fusion.")
+                return
             try:
                 self._ser = serial.Serial(port=detected, baudrate=self.baudrate,
                                            timeout=self.timeout)
                 self.port = detected   # update so logs show the real port
             except serial.SerialException as e2:
-                raise ConnectionError(f"Auto-detected {detected} but failed: {e2}")
+                self._offline = True
+                print(f"[ESP32] ⚠  Auto-detected {detected} but failed: {e2}")
+                print("[ESP32]    Running in CAMERA-ONLY mode.")
+                return
         time.sleep(2.0)
         self._ser.reset_input_buffer()
         print(f"[ESP32] Connected on {self.port} @ {self.baudrate} baud")
@@ -95,8 +98,11 @@ class ESP32Receiver:
             print("[ESP32] Disconnected.")
 
     def start(self):
-        if self._ser is None:
+        if self._ser is None and not self._offline:
             self.connect()
+        if self._offline:
+            self._running = True
+            return   # no read thread needed — is_ready() returns offline data
         self._running = True
         self._thread  = threading.Thread(target=self._read_loop, daemon=True)
         self._thread.start()
@@ -133,13 +139,25 @@ class ESP32Receiver:
                 continue
 
     def is_ready(self):
+        if self._offline:
+            return True   # always ready; returns neutral data
         with self._lock:
             return len(self._buffer) >= WINDOW_SIZE
 
     def get_sensor_window(self):
+        if self._offline:
+            # Return neutral upright-standing data so SVM outputs ~0.0
+            neutral_acc = np.tile([0.0, -1.0, 0.0, 0.0, 0.0, 0.0],
+                                  (WINDOW_SIZE, 1)).astype(np.float32)
+            neutral_prs = np.zeros((WINDOW_SIZE, 2), dtype=np.float32)
+            return neutral_acc, neutral_prs
         with self._lock:
             buf = np.array(list(self._buffer)[-WINDOW_SIZE:], dtype=np.float32)
         return buf[:, :6], buf[:, 6:]
+
+    @property
+    def is_offline(self):
+        return self._offline
 
     def get_error(self):
         return self._error
