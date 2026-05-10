@@ -45,6 +45,10 @@ class SharedState:
         self.running        = True
         self.camera_name    = "—"      # set by vision_thread after detection
         self.belt_offline   = False    # True when ESP32 not connected
+        self.cam_latency_ms = 0.0      # frame capture → pose done
+        self.svm_latency_ms = 0.0      # sensor window → SVM score
+        self.e2e_latency_ms = 0.0      # frame captured → fused score ready
+        self._t_frame       = 0.0      # timestamp of last captured frame (for E2E)
 
 
 # ── Phase 4: temporal risk trend ─────────────────────────────────────────────
@@ -98,9 +102,12 @@ def sensor_thread(receiver, svm_pipeline, state):
         try:
             X     = extract_realtime_features(sensor_win, pressure_win)
             X     = np.nan_to_num(X, nan=0.0)
+            t_svm_start = time.time()
             proba = svm_predict_proba(svm_pipeline, X)[0]
+            t_svm_end = time.time()
             with state.lock:
-                state.svm_proba = float(proba)
+                state.svm_proba       = float(proba)
+                state.svm_latency_ms  = (t_svm_end - t_svm_start) * 1000
         except Exception as e:
             print(f"[SensorThread] Error: {e}")
         time.sleep(0.10)
@@ -137,17 +144,21 @@ def vision_thread(pose_estimator, state, simulate=False):
         state.camera_name = f"[{cam_idx}]"
 
     while state.running:
+        t_frame = time.time()
         ret, frame = cap.read()
         if not ret:
             time.sleep(0.05)
             continue
 
         features = pose_estimator.process_frame(frame)
+        t_pose_done = time.time()
 
         with state.lock:
-            state.latest_frame  = frame.copy()
-            state.pose_score    = features["pose_score"]
-            state.pose_features = features
+            state.latest_frame   = frame.copy()
+            state.pose_score     = features["pose_score"]
+            state.pose_features  = features
+            state.cam_latency_ms = (t_pose_done - t_frame) * 1000
+            state._t_frame       = t_frame   # hand off to fusion_thread for E2E
 
     cap.release()
     pose_estimator.close()
@@ -232,10 +243,12 @@ def fusion_thread(state, alert_system, risk_trend, mlp_fusion=None):
         predicted = trend_predicted or pose_early_warn
 
         with state.lock:
+            t_frame = state._t_frame
             state.fused_proba    = fused_proba
             state.label          = label
             state.fall_predicted = predicted
             state.risk_slope     = slope
+            state.e2e_latency_ms = (time.time() - t_frame) * 1000 if t_frame else 0.0
 
         # Alert on rising prediction OR confirmed fall
         if predicted or label == 1:
@@ -299,6 +312,9 @@ def display_thread_gui(state, pose_estimator):
             slope        = state.risk_slope
             pf           = dict(state.pose_features)
             belt_offline = state.belt_offline
+            cam_ms       = state.cam_latency_ms
+            svm_ms       = state.svm_latency_ms
+            e2e_ms       = state.e2e_latency_ms
 
         # Draw skeleton on a copy of the frame
         if frame is not None:
@@ -364,6 +380,14 @@ def display_thread_gui(state, pose_estimator):
 
         cv2.putText(display, "Q / Esc to quit", (w - 180, h - 8),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
+
+        # Latency overlay — bottom-left, above the risk bar
+        lat_text  = f"Cam:{cam_ms:.0f}ms  SVM:{svm_ms:.0f}ms  E2E:{e2e_ms:.0f}ms"
+        lat_color = ((0, 255, 0) if e2e_ms < 200
+                     else (0, 165, 255) if e2e_ms < 400
+                     else (0, 0, 255))
+        cv2.putText(display, lat_text, (10, h - 18),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.48, lat_color, 1)
 
         cv2.imshow("Fall Prediction System", display)
         key = cv2.waitKey(30) & 0xFF
