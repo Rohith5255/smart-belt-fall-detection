@@ -105,9 +105,9 @@ def sensor_thread(receiver, svm_pipeline, state):
 
 def vision_thread(pose_estimator, state, simulate=False):
     """
-    Phase 3: runs MediaPipe Pose on each camera frame instead of ViT.
-    Simulate mode injects synthetic pose scores matching a realistic
-    pre-fall → fall progression.
+    Phase 3: runs MediaPipe Pose on each camera frame.
+    Camera index is taken directly from CAMERA_INDEX in config.py.
+    Run find_cameras.py once to identify the right index, then set it there.
     """
     if simulate:
         print("[VisionThread] Simulate mode — synthetic pose scores.")
@@ -115,18 +115,24 @@ def vision_thread(pose_estimator, state, simulate=False):
         return
 
     import cv2
-    # Auto-detect: prefer external/secondary webcam, fall back to laptop cam (0)
-    cam_idx, cam_name = auto_detect_camera(fallback_index=CAMERA_INDEX)
-    cap = cv2.VideoCapture(cam_idx)
+
+    cam_idx = CAMERA_INDEX
+
+    # Try CAP_DSHOW first (faster init, more reliable on Windows for USB cams)
+    cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
     if not cap.isOpened():
-        print(f"[VisionThread] Cannot open camera [{cam_idx}] {cam_name}.")
+        cap = cv2.VideoCapture(cam_idx)   # fallback to default backend
+    if not cap.isOpened():
+        print(f"[VisionThread] Cannot open camera [{cam_idx}]. "
+              f"Run find_cameras.py and update CAMERA_INDEX in config.py.")
         while state.running:
             time.sleep(0.1)
         return
 
-    print(f"[VisionThread] Using camera [{cam_idx}] {cam_name} — MediaPipe Pose active.")
+    print(f"[VisionThread] Camera [{cam_idx}] opened (CAP_DSHOW) — MediaPipe Pose active.")
     with state.lock:
-        state.camera_name = f"[{cam_idx}] {cam_name}"
+        state.camera_name = f"[{cam_idx}]"
+
     while state.running:
         ret, frame = cap.read()
         if not ret:
