@@ -22,7 +22,6 @@ from config import (CAMERA_INDEX,
                     RISK_BUFFER_SIZE, RISK_SLOPE_THRESHOLD,
                     RISK_SCORE_THRESHOLD, PREDICTION_HORIZON_SEC,
                     ALERT_COOLDOWN_SECONDS)
-from utils.camera_utils import auto_detect_camera
 from models.svm_model import load_svm, svm_predict_proba
 from fusion.fusion_model import fuse, load_fusion_model
 from preprocessing.sensor_preprocessing import extract_realtime_features
