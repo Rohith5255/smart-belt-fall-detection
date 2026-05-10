@@ -61,6 +61,12 @@ ESP32_DATA_FORMAT = ["acc_x", "acc_y", "acc_z",
                       "pressure_left", "pressure_right"]
 CAMERA_INDEX    = 0
 
+# ── Camera override ────────────────────────────────────────────────────────
+# Set to 0, 1, 2 … to force a specific camera and skip auto-detection.
+# Set to -1 to let auto_detect_camera() choose (default).
+# Run:  python test_cameras.py   to see which index is your external webcam.
+PREFERRED_CAMERA_INDEX = -1
+
 # ── Alert Config ───────────────────────────────────────────────────────
 ALERT_COOLDOWN_SECONDS = 10
 
