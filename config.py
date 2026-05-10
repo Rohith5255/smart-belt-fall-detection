@@ -49,7 +49,10 @@ FUSION_SVM_WEIGHT = 0.55
 FUSION_VIT_WEIGHT = 0.45
 FALL_THRESHOLD      = 0.18   # above normal-movement ceiling (SVM noise * amplifier)
 SVM_AMPLIFIER       = 5.0    # only applied when SVM spikes above SVM_SPIKE_THRESHOLD
-SVM_SPIKE_THRESHOLD = 0.030  # SVM must exceed this to be amplified (baseline ~0.001)
+# debug_svm.py shows normal SVM idles at 0.003–0.006, fall reaches 0.017–0.018.
+# Old threshold (0.030) was above the fall peak → amplifier NEVER fired.
+# New threshold (0.012) sits between normal ceiling (0.006) and fall floor (0.017).
+SVM_SPIKE_THRESHOLD = 0.012  # was 0.030 — now catches real fall spikes from belt
 FUSION_MODEL_PATH = os.path.join(SAVED_MODELS_DIR, "fusion_model.pkl")
 
 # ── IoT / Serial Config ────────────────────────────────────────────────

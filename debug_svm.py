@@ -19,11 +19,12 @@ def make_normal_window():
         np.random.normal(0.0,  0.05, WINDOW_SIZE),
     ])
     gyr = np.random.normal(0.0, 2.0, (WINDOW_SIZE, 3))
-    p   = np.column_stack([
+    sensor_win = np.hstack([acc, gyr]).astype(np.float32)   # (200, 6)
+    p = np.column_stack([
         np.random.normal(400, 20, WINDOW_SIZE),
         np.random.normal(390, 20, WINDOW_SIZE),
-    ])
-    return acc.astype(np.float32), p.astype(np.float32)
+    ]).astype(np.float32)                                    # (200, 2)
+    return sensor_win, p
 
 def make_fall_window():
     acc = np.column_stack([
@@ -32,11 +33,12 @@ def make_fall_window():
         np.random.normal( 1.5, 0.5,   WINDOW_SIZE),
     ])
     gyr = np.random.normal(0, 300.0, (WINDOW_SIZE, 3))
-    p   = np.column_stack([
+    sensor_win = np.hstack([acc, gyr]).astype(np.float32)   # (200, 6)
+    p = np.column_stack([
         np.random.normal(3200, 150, WINDOW_SIZE),
         np.random.normal( 800, 100, WINDOW_SIZE),
-    ])
-    return acc.astype(np.float32), p.astype(np.float32)
+    ]).astype(np.float32)                                    # (200, 2)
+    return sensor_win, p
 
 # ── Load the actual saved SVM ──
 pipeline = joblib.load(r"C:/Users/rohit/OneDrive/Desktop/CAPSTONE/saved_models/svm_model.pkl")
