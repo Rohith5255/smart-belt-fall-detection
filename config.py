@@ -79,14 +79,14 @@ PRE_FALL_RATIO        = 0.60   # first 60% of fall sequence = pre-fall
 RISK_BUFFER_SIZE      = 8      # ~1.6s at 0.2s per cycle (was 15/3s — too slow to predict)
 
 # Thresholds to fire "FALL PREDICTED" warning
-RISK_SLOPE_THRESHOLD  = 0.005  # raised from 0.0015 — ignores SVM noise fluctuations
+RISK_SLOPE_THRESHOLD  = 0.003  # raised from 0.0015 — ignores SVM noise fluctuations
 RISK_SCORE_THRESHOLD  = 0.07   # mean fused score baseline gate (kept for RiskTrend)
 
 # Minimum fused score to even consider a FALL PREDICTED alert.
 # Stops noise-driven false positives in belt-offline / camera-only mode
 # where SVM idles ~0.015 and brief pose flickers push fused to ~0.10.
 # Real pre-fall events produce fused >= 0.20 well before impact.
-FALL_PREDICT_THRESHOLD = 0.20
+FALL_PREDICT_THRESHOLD = 0.15
 
 # Prediction horizon printed in alerts
 PREDICTION_HORIZON_SEC = 2.0
