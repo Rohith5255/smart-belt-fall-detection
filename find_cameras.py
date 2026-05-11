@@ -16,7 +16,7 @@ print("Scanning cameras (indices 0-4) ...\n")
 
 found = []
 for i in range(5):
-    cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+    cap = cv2.VideoCapture(i)
     if not cap.isOpened():
         print(f"  [{i}]  not available")
         cap.release()

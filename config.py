@@ -64,7 +64,7 @@ ESP32_DATA_FORMAT = ["acc_x", "acc_y", "acc_z",
                       "pressure_left", "pressure_right"]
 # Set to whichever index is your external webcam.
 # Run:  python find_cameras.py   to see which index shows your external webcam.
-CAMERA_INDEX    = 1
+CAMERA_INDEX    = 0
 
 # ── Alert Config ───────────────────────────────────────────────────────
 ALERT_COOLDOWN_SECONDS = 10
@@ -90,3 +90,5 @@ FALL_PREDICT_THRESHOLD = 0.20
 
 # Prediction horizon printed in alerts
 PREDICTION_HORIZON_SEC = 2.0
+
+ROTATE_CAMERA_FRAME = True   # True = phone portrait, False = laptop webcam

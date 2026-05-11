@@ -15,6 +15,7 @@ import threading
 import csv
 import numpy as np
 import torch
+from config import CAMERA_INDEX, ROTATE_CAMERA_FRAME
 from collections import deque
 from datetime import datetime
 
@@ -175,6 +176,8 @@ def vision_thread(pose_estimator, state, simulate=False):
             continue
 
         _no_signal_warned = False   # real frame arrived — reset flag
+        if ROTATE_CAMERA_FRAME:
+            frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
         features = pose_estimator.process_frame(frame)
         t_pose_done = time.time()

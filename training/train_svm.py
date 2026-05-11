@@ -28,11 +28,11 @@ def main():
     X = np.nan_to_num(X, nan=0.0)
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.20, stratify=y, random_state=42)
+        X, y, test_size=0.20, stratify=y, random_state=7)
 
     print(f"\n[Train] Before SMOTE: fall={int(np.sum(y_train==1))}  "
           f"no-fall={int(np.sum(y_train==0))}")
-    sm = SMOTE(random_state=42)
+    sm = SMOTE(random_state=7)
     X_train_bal, y_train_bal = sm.fit_resample(X_train, y_train)
     print(f"[Train] After  SMOTE: fall={int(np.sum(y_train_bal==1))}  "
           f"no-fall={int(np.sum(y_train_bal==0))}")
