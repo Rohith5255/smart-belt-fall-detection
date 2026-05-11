@@ -15,3 +15,23 @@ venv/
 # IDE
 .vscode/
 .idea/
+
+# AI tool caches
+.claude/
+
+# Datasets (too large for git — use external storage)
+data/
+
+# PlatformIO build artifacts
+iot/.pio/
+.pio/
+
+# Runtime prediction logs
+predict_log_live_*.csv
+predict_log_*.csv
+
+# Large model weights (use Git LFS or external storage)
+saved_models/*.pth
+saved_models/*.pt
+saved_models/*.h5
+saved_models/*.pkl
